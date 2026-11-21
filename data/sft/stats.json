@@ -1,0 +1,25 @@
+{
+  "records": 2986,
+  "train": 2935,
+  "val": 51,
+  "lang_share": {
+    "kn": 0.246,
+    "hinglish": 0.223,
+    "hi": 0.203,
+    "en": 0.194,
+    "kanglish": 0.134
+  },
+  "flags": {
+    "think": 2113,
+    "no_think": 719,
+    "auto": 154
+  },
+  "tasks": {
+    "reasoning": 2986
+  },
+  "lang_mix_warnings": {
+    "kn": "0.25 vs target 0.45",
+    "en": "0.19 vs target 0.10",
+    "hinglish": "0.22 vs target 0.10"
+  }
+}

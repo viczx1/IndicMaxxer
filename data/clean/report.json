@@ -1,0 +1,31 @@
+{
+  "input_files": 45,
+  "records_seen": 2250,
+  "kept": 2232,
+  "rejected": 18,
+  "keep_rate": 0.992,
+  "reject_reasons": {
+    "math_wrong": 18
+  },
+  "by_lang": {
+    "kn": 548,
+    "hinglish": 505,
+    "hi": 446,
+    "en": 429,
+    "kanglish": 304
+  },
+  "by_task": {
+    "reasoning": 2232
+  },
+  "by_mode": {
+    "think": 2232
+  },
+  "by_difficulty": {
+    "medium": 1123,
+    "easy": 675,
+    "hard": 434
+  },
+  "lang_label_disagreements": 380,
+  "romanized_question_english_answer": 372,
+  "math_equations_verified": 7852
+}
