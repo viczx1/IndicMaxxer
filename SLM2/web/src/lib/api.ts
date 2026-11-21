@@ -25,7 +25,7 @@ export async function health() {
 
 /** POST /api/chat and call onEvent for every server-sent event. */
 export async function streamChat(
-  opts: { message: string; history: Msg[]; mode: string; k: number; forceSearch: boolean; files?: File[]; compress?: boolean; docs?: string[] },
+  opts: { message: string; history: Msg[]; mode: string; k: number; forceSearch: boolean; files?: File[]; compress?: boolean; docs?: string[]; style?: string; voice?: boolean },
   onEvent: (e: ChatEvent) => void, signal?: AbortSignal,
 ) {
   const fd = new FormData();
@@ -36,6 +36,8 @@ export async function streamChat(
   fd.append("force_search", String(opts.forceSearch));
   fd.append("compress", String(opts.compress ?? true));
   fd.append("docs", JSON.stringify(opts.docs ?? []));
+  if (opts.style) fd.append("style", opts.style);
+  if (opts.voice) fd.append("voice", "true");
   for (const f of opts.files ?? []) fd.append("files", f);
   const r = await fetch(`${API}/api/chat`, { method: "POST", body: fd, signal });
   if (!r.ok || !r.body) throw new Error(`backend ${r.status}`);

@@ -52,11 +52,6 @@ def load_tokenizers():
         TOKS["Sarvam-1"] = AutoTokenizer.from_pretrained("sarvamai/sarvam-1")
     except Exception:
         pass
-    try:
-        import tiktoken
-        TOKS["GPT-4 (cl100k)"] = tiktoken.get_encoding("cl100k_base")
-    except Exception:
-        pass
 
 @app.on_event("startup")
 def _start():
@@ -100,12 +95,8 @@ def tax(req: TaxReq):
     words = max(1, len(ia.WORD.findall(text)))
     out = []
     for name, t in TOKS.items():
-        if name.startswith("GPT"):
-            ids = t.encode(text)
-            pieces = [t.decode_single_token_bytes(i).decode("utf-8", errors="replace") for i in ids[:160]]
-        else:
-            ids = t.encode(text, add_special_tokens=False)
-            pieces = [p.replace("▁", " ") for p in t.convert_ids_to_tokens(ids[:160])]
+        ids = t.encode(text, add_special_tokens=False)
+        pieces = [p.replace("▁", " ") for p in t.convert_ids_to_tokens(ids[:160])]
         out.append({"name": name, "tokens": len(ids), "per_word": round(len(ids) / words, 2), "pieces": pieces})
     short = None
     if req.compress and COMP["pc"] is not None and "IndicMaxxer-2B" in TOKS and text.strip():
@@ -159,7 +150,7 @@ def _stream_one(agent, msgs, max_new=384):
 
 @app.post("/api/chat")
 async def chat(message: str = Form(""), history: str = Form("[]"), mode: str = Form("instruct"), k: int = Form(3),
-               force_search: bool = Form(False), compress: bool = Form(True), docs: str = Form("[]"),
+               force_search: bool = Form(False), compress: bool = Form(True), docs: str = Form("[]"), style: str = Form(""), voice: bool = Form(False),
                files: list[UploadFile] = File(default=[])):
     agent = STATE["agent"]
     paths = []
@@ -170,6 +161,7 @@ async def chat(message: str = Form(""), history: str = Form("[]"), mode: str = F
             out.write(await f.read())
         paths.append(p)
     hist = json.loads(history or "[]")
+    pick = style or None                                  # language chosen in the UI (voice page)
 
     async def gen():
         if agent is None:
@@ -184,7 +176,11 @@ async def chat(message: str = Form(""), history: str = Form("[]"), mode: str = F
                 with STATE["lock"]:                   # one generation at a time on a laptop GPU
                     t0 = time.time()
                     put("status", text="routing")
-                    text, style, md, msgs, trace = agent.prepare(message, hist, mode, force_search, paths, compress, json.loads(docs or "[]")[-3:])
+                    text, style, md, msgs, trace = agent.prepare(message, hist, mode, force_search, paths, compress, json.loads(docs or "[]")[-3:], pick)
+                    if voice:                                  # spoken turn: short, chatty, fast to first audio
+                        msgs[0]["content"] += {"kn": " ಇದು ಮಾತುಕತೆ: 1-2 ಚಿಕ್ಕ ವಾಕ್ಯಗಳಲ್ಲಿ ಸ್ನೇಹಪೂರ್ವಕವಾಗಿ ಉತ್ತರಿಸು.",
+                                               "hi": " यह बातचीत है: 1-2 छोटे वाक्यों में दोस्ताना जवाब दो।"}.get(
+                            {"kanglish": "kn", "hinglish": "hi"}.get(style, style), " This is a spoken chat: reply in 1-2 short, friendly sentences.")
                     put("meta", style=style, mode=md, tools=trace["tools"], sources=trace["sources"])
                     if trace.get("file_error") and not trace.get("file_ok"):     # say so instead of inventing content
                         f = trace["file_error"]
@@ -207,7 +203,7 @@ async def chat(message: str = Form(""), history: str = Form("[]"), mode: str = F
                     else:
                         put("status", text="generating")
                         ans, think, n_in, n_out = "", "", 0, 0
-                        for kind, piece in _stream_one(agent, msgs):
+                        for kind, piece in _stream_one(agent, msgs, max_new=110 if voice else 384):
                             if kind == "n_in":
                                 n_in = int(piece)
                             elif kind == "think":
@@ -235,12 +231,12 @@ async def chat(message: str = Form(""), history: str = Form("[]"), mode: str = F
                                      tok_per_s=round(n_out / max(dt, 1e-6), 1), tax=agent.tax(text + "\n" + ans))
                         tr = trace
                     tr = {k2: v for k2, v in tr.items() if k2 != "passes"}
-                    g = agent.ref.get("GPT-4 cl100k")
-                    if g is not None:      # everything processed this turn (prompt incl. history/context + reply)
+                    g = agent.ref.get("Sarvam-1")
+                    if g is not None:      # everything processed this turn vs stock Sarvam-1 (its tokenizer, no compressor)
                         prompt = agent.tk.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False)
-                        gpt_prompt = len(g.encode(prompt)) + tr.get("compress", {}).get("gpt_removed", 0)
+                        base = len(g.encode(prompt, add_special_tokens=False)) + tr.get("compress", {}).get("base_removed", 0)
                         tr["processed"] = {"IndicMaxxer-2B": int(tr.get("prompt_tokens") or 0) + agent.ntok(ans),
-                                           "GPT-4 cl100k": gpt_prompt + len(g.encode(ans))}
+                                           "Sarvam-1": base + len(g.encode(ans, add_special_tokens=False))}
                     put("done", answer=ans, trace={k2: v for k2, v in tr.items() if k2 != "docs"}, docs=tr.get("docs") or [],
                         file=f"/api/files/{os.path.basename(out_file)}" if out_file else None)
             except Exception as e:
@@ -384,7 +380,7 @@ def stt_warm(lang: str = Form("en")):
 # ------------------------------------------------------------------ only-my-voice: WavLM speaker verification (CPU, ~95M)
 SPK_DIR = os.path.join(STT_DIR, "wavlm-base-plus-sv")
 SPK_FILE = os.path.join(os.environ["IMX_WORK"], "voiceprint.npy")
-SPK_THR = float(os.environ.get("IMX_SPK_THR", "0.80"))
+SPK_THR = float(os.environ.get("IMX_SPK_THR", "0.83"))   # measured: same voice 0.92-0.97, other voice 0.77
 _spk = {"fe": None, "m": None}
 _spk_lock = threading.Lock()
 

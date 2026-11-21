@@ -6,7 +6,7 @@
                 | web_search (Wikipedia kn/hi/en, optional DuckDuckGo) | doc_write (answer saved as .docx)
   /reasoning -> same tools, then k sampled native-language thoughts in ONE batched generate, then a vote
                 (majority on the final number, else the answer that agrees most with the others).
-Every reply returns a trace: style, mode, tools, tokens (IndicMaxxer vs Sarvam-1 vs cl100k), latency.
+Every reply returns a trace: style, mode, tools, tokens (IndicMaxxer vs stock Sarvam-1), latency.
 """
 import collections, json, os, re, time, urllib.parse, urllib.request
 
@@ -285,11 +285,6 @@ class Agent:
             self.ref["Sarvam-1"] = AutoTokenizer.from_pretrained("sarvamai/sarvam-1", token=hf_token)
         except Exception:
             pass
-        try:
-            import tiktoken
-            self.ref["GPT-4 cl100k"] = tiktoken.get_encoding("cl100k_base")
-        except Exception:
-            pass
 
     def ntok(self, text):
         return len(self.tk.encode(text, add_special_tokens=False))
@@ -297,7 +292,7 @@ class Agent:
     def tax(self, text):
         row = {"IndicMaxxer-2B": self.ntok(text)}
         for name, t in self.ref.items():
-            row[name] = len(t.encode(text)) if name.startswith("GPT") else len(t.encode(text, add_special_tokens=False))
+            row[name] = len(t.encode(text, add_special_tokens=False))
         return row
 
     @torch.no_grad()
@@ -338,19 +333,21 @@ class Agent:
         except Exception as e:
             trace["tools"].append(f"compressor failed: {e!r}"[:120])
             return text
-        c = trace.setdefault("compress", {"before": 0, "after": 0, "gpt_removed": 0})
+        c = trace.setdefault("compress", {"before": 0, "after": 0, "base_removed": 0})
         c["before"] += self.ntok(text); c["after"] += self.ntok(short)
-        g = self.ref.get("GPT-4 cl100k")
-        if g is not None:                       # what the same text would have cost GPT-4 had it been sent uncompressed
-            c["gpt_removed"] += len(g.encode(text)) - len(g.encode(short))
+        g = self.ref.get("Sarvam-1")
+        if g is not None:                       # what stock Sarvam-1 would have paid for this text, uncompressed
+            c["base_removed"] += len(g.encode(text, add_special_tokens=False)) - len(g.encode(short, add_special_tokens=False))
         return short
 
-    def prepare(self, message, history=(), mode=None, force_search=False, files=(), compress=True, docs=()):
+    def prepare(self, message, history=(), mode=None, force_search=False, files=(), compress=True, docs=(), style_hint=None):
         """Style detection + rule-based tool calls + prompt. Returns (text, style, mode, msgs, trace)."""
         m = FLAG_RE.search(message)
         mode = (m.group(1).lower() if m else None) or mode or "instruct"
         text = FLAG_RE.sub("", message).strip()
         style = detect_style(text) if text else "en"
+        if style_hint in SYS and style not in ({"kn": "kanglish", "hi": "hinglish"}.get(style_hint),):
+            style = style_hint                        # the language the user picked (voice page) wins
         trace = {"style": style, "mode": mode, "tools": [], "sources": [], "compress_on": bool(compress and self.compressor)}
         ctx = [f"[document]\n{d}" for d in docs if d and d.strip()]   # documents read earlier in this chat
 
@@ -387,7 +384,9 @@ class Agent:
 
         msgs = [{"role": "system", "content": SYS[style] + BRIEF[style]}]
         # token diet: only the last 2 exchanges; older turns squeezed hard; the last reply lightly; your last message verbatim
-        hist = [h for h in list(history)[-4:] if h.get("role") in ("user", "assistant") and isinstance(h.get("content"), str)]
+        base = {"kanglish": "kn", "hinglish": "hi"}.get(style, style)
+        hist = [h for h in list(history)[-4:] if h.get("role") in ("user", "assistant") and isinstance(h.get("content"), str)
+                and detect_style(h["content"]) in (base, "en", "kanglish", "hinglish")]   # other-script turns would pull the reply's language
         for j, h in enumerate(hist):
             c = h["content"].split("\n\n---\n")[0][:1200]
             if j < len(hist) - 2:

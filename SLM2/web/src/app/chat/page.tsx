@@ -52,12 +52,12 @@ function TaxPanel({ trace }: { trace?: Trace }) {
         </div>
       ))}
       {trace.processed && (() => {
-        const ours = trace.processed["IndicMaxxer-2B"], gpt = trace.processed["GPT-4 cl100k"], win = ours <= gpt;
+        const ours = trace.processed["IndicMaxxer-2B"], gpt = trace.processed["Sarvam-1"], win = ours <= gpt;
         return (
           <div className="glass-dark p-3 text-sm">
             <div className="flex justify-between"><span className="text-[var(--muted)]">processed this turn</span>
               <b className={win ? "text-lime" : "text-amber-200"}>{win ? `${(gpt / Math.max(ours, 1)).toFixed(2)}× fewer` : `${(ours / Math.max(gpt, 1)).toFixed(2)}× more`}</b></div>
-            <div className="mt-1 text-xs text-[var(--muted)]">IndicMaxxer {ours} · GPT-4 {gpt} tokens, counting history, search results, documents and the reply (what you actually pay for)</div>
+            <div className="mt-1 text-xs text-[var(--muted)]">IndicMaxxer {ours} · stock Sarvam-1 {gpt} tokens, counting history, search results, documents and the reply (what you actually pay for)</div>
           </div>
         );
       })()}

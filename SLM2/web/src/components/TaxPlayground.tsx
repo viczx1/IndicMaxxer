@@ -47,7 +47,13 @@ export default function TaxPlayground() {
       <div>
         <div className="kicker mb-2">try it · type anything</div>
         <h2 className="text-3xl font-semibold sm:text-4xl">See the token tax live.</h2>
-        <p className="mt-3 text-[var(--muted)]">Every token costs money and time, and uses up the context window. Here is the same text through three tokenizers.</p>
+        <p className="mt-3 text-[var(--muted)]">Every token costs money and time, and uses up the context window. Same text through stock Sarvam-1 and IndicMaxxer (Sarvam-1 + our fused tokenizer + compressor).</p>
+        <div className="mt-4 grid grid-cols-5 gap-1.5 text-center">
+          {[["Hinglish", "−12.5%"], ["Kanglish", "−8.3%"], ["English", "−6.3%"], ["ಕನ್ನಡ", "−6.1%"], ["हिंदी", "−2.1%"]].map(([l, v]) => (
+            <div key={l} className="glass-dark py-2"><div className="display text-lg font-semibold text-lime">{v}</div><div className="text-[11px] text-[var(--muted)]">{l}</div></div>
+          ))}
+        </div>
+        <p className="mt-1.5 text-xs text-[var(--faint)]">tokens vs stock Sarvam-1 from the fused tokenizer alone (300 chat replies per style). The compressor cuts another 40–60% of long context.</p>
         <div className="mt-5 flex flex-wrap gap-2">
           {SAMPLES.map((s) => (
             <button key={s.label} onClick={() => setText(s.text)} className={`pill px-4 py-1.5 text-sm ${text === s.text ? "pill-on" : ""}`}>{s.label}</button>
@@ -110,7 +116,7 @@ export default function TaxPlayground() {
                 ))}
               </AnimatePresence>
             </div>
-            <p className="kicker mt-3">each chip is one token · � = a broken piece of a character</p>
+            <p className="kicker mt-3">each chip is one token</p>
           </div>
         )}
       </div>
